@@ -672,9 +672,10 @@ download_main_indices () {
 	COMPONENTS="$(echo $comp | tr '|' ' ')"
 
 	export COMPONENTS
-	for m in $MIRRORS; do
-	    for c in $COMPONENTS; do
-		local path="dists/$SUITE/$c/binary-$ARCH/Packages"
+#	for m in $MIRRORS; do
+#	    for c in $COMPONENTS; do
+		local path="$SUITE/Packages"
+                local m="$m1"
 		local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c" "$ARCH" "$m" "$path")"
 		if [ -x /bin/gunzip ] && get "$m/${path}.gz" "${pkgdest}.gz"; then
 			rm -f "$pkgdest"
@@ -682,8 +683,8 @@ download_main_indices () {
 		elif get "$m/$path" "$pkgdest"; then
 			true
 		fi
-	    done
-	done
+#	    done
+#	done
 	progress 100 100 DOWNMAINPKGS "Downloading Packages file"
 }
 
@@ -691,35 +692,19 @@ download_main () {
 	local m1="${MIRRORS%% *}"
 
 	:>$TARGET/debootstrap/debpaths
-	for p in "$@"; do
-	    for c in $COMPONENTS; do
-		local details=""
-		for m in $MIRRORS; do
-			local path="dists/$SUITE/$c/binary-$ARCH/Packages"
-			local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c" "$ARCH" "$m" "$path")"
-			if [ ! -e "$pkgdest" ]; then continue; fi
-			details="$($PKGDETAILS PKGS "$m" "$pkgdest" "$p")"
-			if [ "$details" = "$p -" ]; then
-				details=""
-				continue
-			fi
-			size="${details##* }"; details="${details% *}"
-			md5="${details##* }"; details="${details% *}"
-			local debdest="$($DLDEST deb $details)"
-			if get "$m/${details##* }" "$TARGET/$debdest" "$md5" "$size"; then
-				echo >>$TARGET/debootstrap/debpaths "$p $debdest"
-				details="done"
-				break
-			fi
-		done
-		if [ "$details" != "" ]; then
-			break
-		fi
-	    done
-	    if [ "$details" != "done" ]; then
-		error 1 COULDNTDL "Couldn't download %s" "$p"
-	    fi
-	done
+
+	pkgs_to_get="$*"
+	    local path="$SUITE/Packages"
+	    for m in $MIRRORS; do
+		local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c" "$ARCH" "$m1" "$path")"
+		if [ ! -e "$pkgdest" ]; then continue; fi
+		pkgs_to_get="$(download_debs "$m1" "$pkgdest" $pkgs_to_get 5>&1 1>&6)"
+		if [ -z "$pkgs_to_get" ]; then break; fi
+	    done 6>&1
+	    if [ -z "$pkgs_to_get" ]; then break; fi
+	if [ "$pkgs_to_get" != "" ]; then
+		error 1 COULDNTDLPKGS "Couldn't download packages: %s" "$pkgs_to_get"
+	fi
 }
 
 ###################################################### deb choosing support
@@ -729,11 +714,11 @@ get_debs () {
 	shift
 	local m1 c
 	for m1 in $MIRRORS; do
-		for c in $COMPONENTS; do
-			local path="dists/$SUITE/$c/binary-$ARCH/Packages"
+#		for c in $COMPONENTS; do
+			local path="$SUITE/Packages"
 			local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c" "$ARCH" "$m1" "$path")"
 			echo $("$PKGDETAILS" FIELD "$field" "$m1" "$pkgdest" "$@" | sed 's/ .*//')
-		done
+#		done
 	done
 }
 
@@ -880,7 +865,7 @@ setup_apt_sources () {
 	mkdir -p "$TARGET/etc/apt"
 	for m in "$@"; do
 		local cs=""
-		for c in $COMPONENTS; do
+		for c1 in $COMPONENTS; do
 			local path="dists/$SUITE/$c/binary-$ARCH/Packages"
 			local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c" "$ARCH" "$m" "$path")"
 			if [ -e "$pkgdest" ]; then cs="$cs $c"; fi
@@ -1136,8 +1121,8 @@ resolve_deps () {
 	#      lots of Packages files. -- aj 2005/06/12
 
 	c="${COMPONENTS%% *}"
-	local path="dists/$SUITE/$c/binary-$ARCH/Packages"
-	local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c" "$ARCH" "$m1" "$path")"
+	local path="$SUITE/Packages"
+	local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c1" "$ARCH" "$m1" "$path")"
 
 	local PKGS="$*"
 	local ALLPKGS="$PKGS";
@@ -1156,8 +1141,8 @@ setup_available () {
 	local m1="${MIRRORS%% *}"
 
 	for c in $COMPONENTS; do
-		local path="dists/$SUITE/$c/binary-$ARCH/Packages"
-		local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c" "$ARCH" "$m1" "$path")"
+		local path="$SUITE/Packages"
+		local pkgdest="$TARGET/$($DLDEST pkg "$SUITE" "$c1" "$ARCH" "$m1" "$path")"
 		# XXX: What if a package is in more than one component?
 		# -- cjwatson 2009-07-29
 		"$PKGDETAILS" STANZAS "$pkgdest" "$@"
